@@ -72,10 +72,9 @@ void connectMQTT(){
   if (MQTT.connected() and MQTT2.connected()){
     return;
   }
-  while (!MQTT.connected()){
-    Serial.print("\nConnecting to MQTT Broker ");
+  while (!MQTT.connected() or !MQTT2.connected()){
+    Serial.print("\nConnecting to ");
     Serial.print(broker);
-    Serial.println(".");
     if (MQTT.connect(pubMag)){
       Serial.print("\nConnected to Broker for pubMag.");
     }
@@ -109,10 +108,12 @@ void receivePacket(char* topic, byte* payload, unsigned int length){
   }
   if (msg == "0"){
     digitalWrite(lockPin, HIGH);
+    Serial.print("Message Received '0'");
     delay(500);
   }
   if (msg == "1"){
     digitalWrite(lockPin, LOW);
+    Serial.print("Message Received '1'");
     delay(3000);
   }
 }
@@ -138,5 +139,5 @@ void loop() {
   magSensor();
   keepConnections();
   MQTT.loop();
-  
+  MQTT2.loop();
 }

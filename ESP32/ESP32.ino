@@ -15,19 +15,18 @@
 #define pubMag "MAGS"
 #define subLock "DOOR"
 #define TOPIC_PUBLISH "HALLWAY"
+#define TOPIC_SUBSCRIBE "LOCK"
 
 WiFiClient wifiClient;
 PubSubClient MQTT(wifiClient);
 PubSubClient MQTT2(wifiClient);
 
 //Consts
-const char* ssid = "INTELBRAS";
-const char* pass = "marcia12345";
+const char* ssid = "LIEC_119";
+const char* pass = "********";
 const char* broker = "public.mqtthq.com";
-
 int port = 1883;
-int pState = HIGH;
-int state, analogic, magnetic;
+int state, magnetic;
 
 void connectWiFi();
 void connectMQTT();
@@ -39,8 +38,9 @@ void setup() {
   pinMode(pulsePin, OUTPUT);
   pinMode(magPin, INPUT_PULLUP);
   digitalWrite(lockPin, OUTPUT);
-  
+
   connectWiFi();
+
   MQTT.setServer(broker, port);
   MQTT2.setServer(broker, port);
   MQTT2.setCallback(receivePacket);
@@ -69,31 +69,83 @@ void connectWiFi(){
  
 }
 void connectMQTT(){
-  if (MQTT.connected() and MQTT2.connected()){
+  if (MQTT.connected()){
     return;
   }
-  while (!MQTT.connected() or !MQTT2.connected()){
+  while (!MQTT.connected()){
     Serial.print("\nConnecting to ");
     Serial.print(broker);
     if (MQTT.connect(pubMag)){
       Serial.print("\nConnected to Broker for pubMag.");
-    }
-    else if (MQTT2.connect(subLock)){
-      Serial.print("\nConnected to Broker for subLock.");
-      MQTT2.subscribe(TOPIC_PUBLISH);
-      if (MQTT.connected() and MQTT2.connected()){
-        break;
-      }
+      magnetic = digitalRead(magPin);
+        if (magnetic == HIGH){
+          MQTT.publish(TOPIC_PUBLISH, "1");
+          Serial.print("\nPorta Aberta");
+          delay(3000);
+
+        } else if (magnetic == LOW) {
+            MQTT.publish(TOPIC_PUBLISH, "0");
+            Serial.print("\nPorta Fechada");
+            delay(3000);
+        } 
+      break;
     }
     else if(!MQTT.connected()) {
-      Serial.print("\nCould not connect to broker. New attempt in 5 seconds.");
-      delay(5000);
+      Serial.print("\nCould not connect to pubMag. New attempt in 3 seconds.");
+      delay(3000);
     }
   }
 }
+void connectMQTT2(){
+  if (MQTT2.connected()){
+    return;
+  }
+  while (!MQTT2.connected()){
+    Serial.print("\nConnecting to ");
+    Serial.print(broker);
+    if (MQTT2.connect(subLock)){
+      Serial.print("\nConnected to Broker for subLock.");
+      MQTT2.subscribe(TOPIC_SUBSCRIBE);
+      if (MQTT.connected()){
+        magnetic = digitalRead(magPin);
+          if (magnetic == HIGH){
+            MQTT.publish(TOPIC_PUBLISH, "1");
+            Serial.print("\nPorta Aberta");
+            delay(3000);
+
+          } else if (magnetic == LOW) {
+              MQTT.publish(TOPIC_PUBLISH, "0");
+              Serial.print("\nPorta Fechada");
+              delay(3000);
+          } 
+      }
+      if (MQTT2.connected()){
+        break;
+      }
+    }
+    else if(!MQTT2.connected()) {
+      Serial.print("\nCould not connect to sublock. New attempt in 3 seconds.");
+      delay(3000);
+    }
+  }
+}
+void pulse(){
+    digitalWrite(pulsePin, HIGH);
+    state = HIGH;
+    delay(500);
+    if (state == HIGH){
+      digitalWrite(pulsePin, LOW);
+      state = HIGH;
+      delay(3000);
+    }
+}
+
 void keepConnections(){
   if(!MQTT.connected()){
       connectMQTT();
+  }
+  if(!MQTT2.connected()){
+    connectMQTT2();
   }
   if(WiFi.status() != WL_CONNECTED){
     connectWiFi();
@@ -106,15 +158,10 @@ void receivePacket(char* topic, byte* payload, unsigned int length){
     char c = (char)payload[i];
     msg += c;
   }
-  if (msg == "0"){
-    digitalWrite(lockPin, HIGH);
-    Serial.print("Message Received '0'");
-    delay(500);
-  }
   if (msg == "1"){
-    digitalWrite(lockPin, LOW);
-    Serial.print("Message Received '1'");
-    delay(3000);
+    pulse();
+    Serial.print("\nMessage Received '1'");
+
   }
 }
 
@@ -122,13 +169,11 @@ void magSensor(){
   magnetic = digitalRead(magPin);
   
   if (magnetic == HIGH){
-    digitalWrite(pulsePin, HIGH);
     MQTT.publish(TOPIC_PUBLISH, "1");
     Serial.print("\nPorta Aberta");
     delay(3000);
 
   } else if (magnetic == LOW) {
-    digitalWrite(pulsePin, LOW);
     MQTT.publish(TOPIC_PUBLISH, "0");
     Serial.print("\nPorta Fechada");
     delay(3000);
@@ -136,7 +181,7 @@ void magSensor(){
 }
 
 void loop() {
-  magSensor();
+  magSensor();  
   keepConnections();
   MQTT.loop();
   MQTT2.loop();

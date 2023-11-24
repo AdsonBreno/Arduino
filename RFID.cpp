@@ -54,25 +54,29 @@ void rfid(){
       Serial.println("     Tag identified     ");
       Serial.println ("Writing the new tag on the system...");
       
-        for (int i = 0; i < 4; i++){
-          // Printa o byte atual
-          Serial.print([i] < 0x10 ? " 0" : " ");
-          Serial.print(mfrc522.uid.uidByte[i], HEX);
-          EEPROM.write(cont, mfrc522.uid.uidByte[i]);
-          EEPROM.commit();
-          cont++;
-
-        }
+      for (int i = 0; i < 4; i++){
+        // Printa o byte atual
+        Serial.print([i] < 0x10 ? " 0" : " ");
+        Serial.print(mfrc522.uid.uidByte[i], HEX);
+        EEPROM.write((cont+1), mfrc522.uid.uidByte[i]);
+        EEPROM.commit();
+        cont++;
+      }
     }
   }
   if(reactRFID == 1){
-    for (int i = 0, i < 4, cont--){
+    for (int i = 0, i < 4, i++){
       EEPROM.write(cont, 00);
+      cont--;
     }
   }
 }
-void setup(){
 
+void setup(){
+  // Inicia a comunicação serial (monitor serial)
+  Serial.begin(9600);
+  Serial.println(". . .Booting System   ");
+  
   // Gravando Cartão na memoria EEPROM
   EEPROM.begin(EEPROM_SIZE); //inicia a memória EEPROM
   EEPROM.write(0, 0x0F);
@@ -89,10 +93,6 @@ void setup(){
 
   pinMode(pinBuzz,OUTPUT); // PINO BUZZER (+ NO 5V E GND NO PINO 13. LOGICA INVERTIDA.)
   digitalWrite(pinGND,LOW);
-  
-  // Inicia a comunicação serial (monitor serial)
-  Serial.begin(9600);
-  Serial.println(". . .Booting System   ");
 
   // Inicia a comunicação SPI
   SPI.begin();
@@ -125,16 +125,69 @@ void receivePacket(char* topic, byte* payload, unsigned int length){
     }
   }
 }
+
 void buzz(){
   delay(50);
-  for(int b = 0, b < 6, b++){
-    digitalWrite(pinBuzz, LOW);
-    delay(timeNegado);
-    digitalWrite(pinBuzz, HIGH);
-    delay(timeNegado);
+  if(liberado == 0){
+    MQTT.publish(TOPIC_PUBLISH, "0");
+    Serial.print("\nAccess Denied");
+    for(b = 0, b < 6, b++){
+      digitalWrite(pinBuzz, LOW);
+      delay(timeNegado);
+      digitalWrite(pinBuzz, HIGH);
+      delay(timeNegado);
+    }
+  } else if(liberado == 3){
+      delay(50);
+      MQTT.publish(TOPIC_PUBLISH, "1");
+      Serial.print("\nAccess Granted");
+  
+      digitalWrite(pinBuzz,HIGH);
+      delay(timeacesso);
+      digitalWrite(pinBuzz,LOW);
+      delay(50);   
+    }
   }
-  Serial.println("Acesso negado!");
-  delay(50);
+}
+void connectWiFi(){
+  Serial.println("Connecting to");
+  Serial.print(ssid);
+  Serial.println("...");
+
+  WiFi.begin(ssid, pass);
+
+  Serial.print("\nConnecting to ");
+  Serial.print(ssid);
+  Serial.print(".");
+
+  while(WiFi.status() != WL_CONNECTED){
+  delay(500);
+  Serial.print("...");
+  }
+  if (WiFi.status() == WL_CONNECTED){
+    Serial.print("\nConnected to ");
+    Serial.print(WiFi.localIP());
+    return;
+  }
+}
+
+void connectMQTT(){
+  if (MQTT.connected()){
+    return;
+  }
+  while (!MQTT.connected()){
+    Serial.print("\nConnecting to ");
+    Serial.print(broker);
+    if (MQTT.connect(ID_PUBLISH)){
+      Serial.print("\nConnected to Broker.");
+    }
+    break;
+  }
+  else if(!MQTT.connected()) {
+    Serial.print("\nCould not connect. New attempt in 3 seconds.");
+    delay(3000);
+    }
+  }
 }
 
 void connectMQTT2(){
@@ -147,18 +200,7 @@ void connectMQTT2(){
     if (MQTT2.connect(subLock)){
       Serial.print("\nConnected to Broker for subLock.");
       MQTT2.subscribe(TOPIC_SUBSCRIBE);
-      if (MQTT.connected()){
-        magnetic = digitalRead(magPin);
-          if (liberado == 3){
-            MQTT.publish(TOPIC_PUBLISH, "1");
-            Serial.print("\nAccess Granted");
 
-          } else if (liberado == 0) {
-              MQTT.publish(TOPIC_PUBLISH, "0");
-              Serial.print("\nAccess Denied");
-              delay(3000);
-          } 
-      }
       if (MQTT2.connected()){
         break;
       }
@@ -184,11 +226,8 @@ void keepConnections(){
 
 void loop(){
   // Verifica se existe um cartão presente para leitura
-  if (mfrc522.PICC_IsNewCardPresent()){
-
-  int liberado = 0; 
-
-   if (mfrc522.PICC_ReadCardSerial()){ // Verifica os 4 bytes da UID
+  if (mfrc522.PICC_IsNewCardPresent()){ // Check if there is a card on the sensor
+   if (mfrc522.PICC_ReadCardSerial()){ // CHeck UID 4 bytes 
       Serial.print("Tag identificada: ");
       for (byte j = 0; j < 3; j=j+3){
         for (byte i = 0; i < 3; i++){
@@ -201,23 +240,14 @@ void loop(){
           }
         }
       }
-    for(i = 0, i < 4, i++){
-      if(uid_tag_desejada[i] == mfrc522.uid.uidByte[i]){
-        liberado++; 
-      }     
-    }
-      if(liberado == 3) {
-        delay(50);
-        digitalWrite(pinBuzz,HIGH);
-        Serial.println("Acesso liberado!");
-        delay(timeacesso);
-        digitalWrite(pinBuzz,LOW);
-        delay(50);
-        // Executa outras ações, como abrir uma porta
-        // Send packet to broker, so it'll open the door
+    for(int j = 0, j < cont, j++){
+      for(i = 0, i < 4, i++){
+        if(EEPROM.read(i) == mfrc522.uid.uidByte[i]){
+          liberado++; 
+        }     
       }
-      else {
-        buzz();
+    }
+      buzz();
       }
     }
     // Delay para não ficar lendo rapidamente

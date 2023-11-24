@@ -1,47 +1,50 @@
 //https://mundoprojetado.com.br/modulo-rfid-rc522/
-
 #include <Arduino.h>
-#include <SPI.h>
-#include <MFRC522.h>
 #include <EEPROM.h>
-#include <WiFi.h>
+#include <MFRC522.h>
 #include <PubSubClient.h>
+#include <SPI.h>
+#include <WiFi.h>
 
 // Pino para colocar no modo "power-down"
 // Não estamos utilizando no circuito proposto
-#define PINO_RST  15
+#define PINO_RST 15
 // Pino SS (no módulo está escrito SDA neste pino)
-#define PINO_SS   5
-
+#define PINO_SS 5
+#define pinBuzz 32
+#define pinGND 13
 #define timenegado 300
 #define timeacesso 1000
-
 #define EEPROM_SIZE 512 //Define o tamanho da EEPROM (1 - 512)
 
-#define Door "DOOR" //ID para envio das informações sobre o estado da porta
-#define RFID "RFID"
-#define TOPIC_PUBLISH "HALLWAY"
+#define ID_PUBLISH "DOOR"
+#define ID_SUBSCRIBE "RFID"
+
+#define TOPIC_PUBLISH "DOOR"
 #define TOPIC_SUBSCRIBE "RFID"
+
+const char* ssid = "LIEC_119";
+const char* pass = "0987ABCDEF";
+const char* broker = "public.mqtthq.com"; //Test
+int port = 1883;
+
+//Global constants
+int cont = 0;
+int liberado = 0;
+int reactRFID = 0;//5;
 
 WiFiClient wifiClient;
 PubSubClient MQTT(wifiClient);
 PubSubClient MQTT2(wifiClient);
 
-//Consts
-const char* ssid = "INTELBRAS";
-const char* pass = "marcia12345";
-const char* broker = "public.mqtthq.com"; //Teste
+void receivePacket(char* topic, byte* payload, unsigned int length);
 
 // UID da tag responsável por liberar o acesso
-uint8_t uid_tag_desejada[4] = {0x0F, 0xD8, 0xC8, 0x43};
+uint8_t uid_tag_desejada[3] = {0x0F, 0xD8, 0xC8, 0x43};
+uint8_t uid_tag_nova[3] = mfrc522.uid.uidByte;
 
-int cont = 0;
-int liberado = 0;
-int reactRFID = 5;
 // Instância do módulo
 MFRC522 mfrc522(PINO_SS, PINO_RST);
-
-void receivePacket(char* topic, byte* payload, unsigned int length);
 
 //Operações RFID
 void rfid(){
@@ -55,8 +58,8 @@ void rfid(){
           // Printa o byte atual
           Serial.print([i] < 0x10 ? " 0" : " ");
           Serial.print(mfrc522.uid.uidByte[i], HEX);
-          EEPROM.begin(EEPROM_SIZE); //inicia a memória EEPROM
           EEPROM.write(cont, mfrc522.uid.uidByte[i]);
+          EEPROM.commit();
           cont++;
 
         }
@@ -64,17 +67,13 @@ void rfid(){
   }
   if(reactRFID == 1){
     for (int i = 0, i < 4, cont--){
-      mfrc522.uid.uidByte[cont]
-    
+      EEPROM.write(cont, 00);
     }
-}
-void eeprom(){
-  
-
+  }
 }
 void setup(){
-  // Gravando Cartão na memoria EEPROM
 
+  // Gravando Cartão na memoria EEPROM
   EEPROM.begin(EEPROM_SIZE); //inicia a memória EEPROM
   EEPROM.write(0, 0x0F);
   EEPROM.commit();
@@ -88,79 +87,28 @@ void setup(){
   EEPROM.commit();
   cont ++;
 
-  pinMode(27,OUTPUT);
-  pinMode(32,OUTPUT); // PINO BUZZER (+ NO 5V E GND NO PINO 13. LOGICA INVERTIDA.)
-  digitalWrite(13,LOW);
+  pinMode(pinBuzz,OUTPUT); // PINO BUZZER (+ NO 5V E GND NO PINO 13. LOGICA INVERTIDA.)
+  digitalWrite(pinGND,LOW);
   
+  // Inicia a comunicação serial (monitor serial)
   Serial.begin(9600);
-  Serial.println("...Iniciando Sistema");
-
-  MQTT.setServer(broker, port);
-  MQTT2.setServer(broker, port);
-  MQTT2.setCallback(receivePacket);  
+  Serial.println(". . .Booting System   ");
 
   // Inicia a comunicação SPI
   SPI.begin();
 
   // Inicia o módulo
   mfrc522.PCD_Init();
-
-  Serial.print(EEPROM.read(0), HEX);
-  Serial.print(EEPROM.read(1), HEX);
-  Serial.print(EEPROM.read(2), HEX);
-  Serial.print(EEPROM.read(3), HEX);
+  for(int i = 0, i < 4, i++){
+    Serial.print(EEPROM.read(i), HEX);
+  }
   Serial.println();
-  Serial.println("Aguardando tag certa para abrir a porta...");
-}
 
-void connectWiFi(){
-  Serial.println("Connecting to");
-  Serial.print(ssid);
-  Serial.println("...");
+  Serial.println("Aguardando tag correta para abrir a porta...");
 
-  WiFi.begin(ssid, pass);
-
-  while(WiFi.status() != WL_CONNECTED){
-  delay(500);
-  Serial.print("...");
-  }
-  if (WiFi.status() == WL_CONNECTED){
-    Serial.print("\nConnected at ");
-    Serial.print(WiFi.localIP());
-    return;
-  }
- 
-}
-void connectMQTT(){
-  if (MQTT.connected() and MQTT2.connected()){
-    return;
-  }
-  while (!MQTT.connected()){
-    Serial.print("\nConnecting to MQTT Broker ");
-    Serial.print(broker);
-    if (MQTT.connect(pubMag)){
-      Serial.print("\nConnected to Broker for Door.");
-    }
-    else if (MQTT2.connect(RFID)){
-      Serial.print("\nConnected to Broker for RFID.");
-      MQTT2.subscribe(TOPIC_SUBSCRIBE);
-      if (MQTT.connected() and MQTT2.connected()){
-        return;
-      }
-    }
-    else if (!MQTT.connected() and !MQTT2.connected()){
-      Serial.print("\nCould not connect to broker. New attempt in 5 seconds.");
-      delay(5000);
-    }  
-  }
-}
-void keepConnections(){
-  if(!MQTT.connected()){
-      connectMQTT();
-  }
-  if(WiFi.status() != WL_CONNECTED){
-    connectWiFi();
-  }
+  MQTT.setServer(broker, port);
+  MQTT2.setServer(broker, port);
+  MQTT2.setCallback(receivePacket);
 }
 void receivePacket(char* topic, byte* payload, unsigned int length){
   String msg;
@@ -170,83 +118,110 @@ void receivePacket(char* topic, byte* payload, unsigned int length){
     msg += c;
   }
   if (msg == "0"){
-    reactRFID = 0;
-    delay(500);
+    Serial.print("\nMessage Received '0'");
+    for (e = 0, e < 4, e++){
+     EEPROM.write(e, uid_tag_nova[e])
+     EEPROM.commit();
+    }
   }
-  if (msg == "1"){
-    reactRFID = 1;
-    Serial.print("Erasing Selected Card");
-    delay(500);
+}
+void buzz(){
+  delay(50);
+  for(int b = 0, b < 6, b++){
+    digitalWrite(pinBuzz, LOW);
+    delay(timeNegado);
+    digitalWrite(pinBuzz, HIGH);
+    delay(timeNegado);
+  }
+  Serial.println("Acesso negado!");
+  delay(50);
+}
+
+void connectMQTT2(){
+  if (MQTT2.connected()){
+    return;
+  }
+  while (!MQTT2.connected()){
+    Serial.print("\nConnecting to ");
+    Serial.print(broker);
+    if (MQTT2.connect(subLock)){
+      Serial.print("\nConnected to Broker for subLock.");
+      MQTT2.subscribe(TOPIC_SUBSCRIBE);
+      if (MQTT.connected()){
+        magnetic = digitalRead(magPin);
+          if (liberado == 3){
+            MQTT.publish(TOPIC_PUBLISH, "1");
+            Serial.print("\nAccess Granted");
+
+          } else if (liberado == 0) {
+              MQTT.publish(TOPIC_PUBLISH, "0");
+              Serial.print("\nAccess Denied");
+              delay(3000);
+          } 
+      }
+      if (MQTT2.connected()){
+        break;
+      }
+    }
+    else if(!MQTT2.connected()) {
+      Serial.print("\nCould not connect to sublock. New attempt in 3 seconds.");
+      delay(3000);
+    }
   }
 }
 
-void loop()
-{
+void keepConnections(){
+  if(!MQTT.connected()){
+      connectMQTT();
+  }
+  if(!MQTT2.connected()){
+    connectMQTT2();
+  }
+  if(WiFi.status() != WL_CONNECTED){
+    connectWiFi();
+  }
+}
+
+void loop(){
   // Verifica se existe um cartão presente para leitura
   if (mfrc522.PICC_IsNewCardPresent()){
-    // Se sim, começa a ler o cartão
-    if (mfrc522.PICC_ReadCardSerial()){
-      uint8_t liberado = 1;
-     
-      // Verifica os 4 bytes da UID
-      Serial.print("Tag identificada: ");
-      for (byte j = 0; j < 4; j=j+4){
 
-                  for (byte i = 0; i < 4; i++)
-                  {
-                    // Printa o byte atual
-                    Serial.print(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " ");
-                    Serial.print(mfrc522.uid.uidByte[i], HEX);
-      
-                    // Se o byte for diferente da tag esperada, não libera o acesso
-                    if(EEPROM.read(i) != mfrc522.uid.uidByte[i])
-                    {
-                      liberado = 0;
-                    }
-                  }
-      Serial.println("");
+  int liberado = 0; 
+
+   if (mfrc522.PICC_ReadCardSerial()){ // Verifica os 4 bytes da UID
+      Serial.print("Tag identificada: ");
+      for (byte j = 0; j < 3; j=j+3){
+        for (byte i = 0; i < 3; i++){
+          // Printa o byte atual
+          Serial.print((mfrc522.uid.uidByte[i] < 0x10) ? " 0" : " ");
+          Serial.print(mfrc522.uid.uidByte[i], HEX);
+          //Inverter + somador
+          if(EEPROM.read(i) != mfrc522.uid.uidByte[i]){
+            liberado = 0;
+          }
+        }
       }
-      if(liberado)
-      {
+    for(i = 0, i < 4, i++){
+      if(uid_tag_desejada[i] == mfrc522.uid.uidByte[i]){
+        liberado++; 
+      }     
+    }
+      if(liberado == 3) {
         delay(50);
-        digitalWrite(13,HIGH);
+        digitalWrite(pinBuzz,HIGH);
         Serial.println("Acesso liberado!");
         delay(timeacesso);
-        digitalWrite(13,LOW);
+        digitalWrite(pinBuzz,LOW);
         delay(50);
         // Executa outras ações, como abrir uma porta
+        // Send packet to broker, so it'll open the door
       }
-      else
-      {
-        delay(50);
-        digitalWrite(13,LOW);
-        delay(timenegado);
-        digitalWrite(13,HIGH);
-        delay(timenegado);
-        digitalWrite(13,LOW);
-        delay(timenegado);
-        digitalWrite(13,HIGH);
-        delay(timenegado);
-        digitalWrite(13,LOW);
-        delay(timenegado);
-        digitalWrite(13,HIGH);
-        delay(timenegado);
-        digitalWrite(13,LOW);
-        delay(timenegado);
-        digitalWrite(13,HIGH);
-        delay(timenegado);
-        digitalWrite(13,LOW);
-        delay(timenegado);
-        digitalWrite(13,HIGH);
-        delay(timenegado);
-        digitalWrite(13,LOW);
-        Serial.println("Acesso negado!");
-        delay(50);
+      else {
+        buzz();
       }
     }
-   
     // Delay para não ficar lendo rapidamente
-    delay(1000);
-    Serial.println("Aguardando tag certa para abrir a porta...");
+    delay(2000);
+    Serial.println("Aguardando tag correta para abrir a porta...");
   }
 }

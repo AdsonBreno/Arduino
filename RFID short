@@ -1,0 +1,66 @@
+#include <Arduino.h>
+#include <MFRC522.h>  //https://mundoprojetado.com.br/modulo-rfid-rc522/
+//#include <PubSubClient.h>
+#include <SPI.h>
+#include <WiFi.h>
+
+#define PINO_RST  15 //SDA no módulo RFID
+#define PINO_SS   5  
+
+#define pinRel    27
+#define pinBuzz   32
+#define pinGND    13
+
+#define timeNegado 300
+#define timeAcesso 750
+
+
+#define timenegado 300
+#define timeacesso 1000
+
+// Instância do módulo
+MFRC522 mfrc522(PINO_SS, PINO_RST);
+
+void setup(){
+
+  pinMode(pinRel,OUTPUT);
+  pinMode(pinGND,OUTPUT);
+  pinMode(pinBuzz,OUTPUT); // PINO BUZZER (+ NO 5V E GND NO PINO 13. LOGICA INVERTIDA.)
+
+  digitalWrite(pinGND,LOW);
+  
+  // Inicia a comunicação serial (monitor serial)
+  Serial.begin(9600);
+  Serial.println("...Iniciando Sistema");
+
+  // Inicia a comunicação SPI
+  SPI.begin();
+
+  // Inicia o módulo
+  mfrc522.PCD_Init();
+
+  Serial.println("Aguardando tag certa para abrir a porta...");
+}
+
+void loop(){
+  // Verifica se existe um cartão presente para leitura
+  if (mfrc522.PICC_IsNewCardPresent()){
+    // Se sim, começa a ler o cartão
+    if (mfrc522.PICC_ReadCardSerial()){     
+      // Verifica os 4 bytes da UID
+      Serial.print("Tag identificada: ");
+      for (byte j = 0; j < 4; j=j+4){
+        for (byte i = 0; i < 4; i++){
+          // Printa o byte atual
+          Serial.print(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " ");
+          Serial.print(mfrc522.uid.uidByte[i], HEX);
+          
+    }
+    Serial.println("\nEnviando ID para o Banco de Dados");
+    // Delay para não ficar lendo rapidamente
+    delay(3000);
+    Serial.println("Aguardando tag certa para abrir a porta...");
+      }
+    }
+  }
+}

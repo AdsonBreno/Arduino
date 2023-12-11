@@ -19,6 +19,29 @@ const char* serverAddress = "http://your-server-url";
 
 MFRC522 mfrc522(PINO_SS, PINO_RST);
 
+void buzz(int liberado){
+  delay(50);
+  if(liberado == 1){
+      delay(50);
+      Serial.print("\nAccess Granted");
+      digitalWrite(pinBuzz,HIGH);
+      digitalWrite(pinRel,HIGH);
+      delay(timeAcesso);
+      digitalWrite(pinBuzz,LOW);
+      delay(timeAcesso*2);
+      digitalWrite(pinRel,LOW);  
+  } else if(liberado == 0){
+    Serial.print("\nAccess Denied");
+    for(int b = 0; b < 6; b++){
+      digitalWrite(pinBuzz, LOW);
+      delay(timeNegado);
+      digitalWrite(pinBuzz, HIGH);
+      delay(timeNegado);
+    }
+    digitalWrite(pinBuzz, LOW);
+  } 
+}
+
 void sendUIDToServer(String uid) {
   // Replace the following with your server details
 
@@ -52,29 +75,6 @@ void sendUIDToServer(String uid) {
   }
 
   http.end();
-}
-
-void buzz(int liberado){
-  delay(50);
-  if(liberado == 1){
-      delay(50);
-      Serial.print("\nAccess Granted");
-      digitalWrite(pinBuzz,HIGH);
-      digitalWrite(pinRel,HIGH);
-      delay(timeAcesso);
-      digitalWrite(pinBuzz,LOW);
-      delay(timeAcesso*2);
-      digitalWrite(pinRel,LOW);  
-  } else if(liberado == 0){
-    Serial.print("\nAccess Denied");
-    for(int b = 0; b < 6; b++){
-      digitalWrite(pinBuzz, LOW);
-      delay(timeNegado);
-      digitalWrite(pinBuzz, HIGH);
-      delay(timeNegado);
-    }
-    digitalWrite(pinBuzz, LOW);
-  } 
 }
 
 void setup(){
@@ -124,4 +124,6 @@ void loop(){
 
     delay(3000); // Delay para não ficar lendo rapidamente
     Serial.println("Aguardando tag certa para abrir a porta...");
+    }
+  }
 }

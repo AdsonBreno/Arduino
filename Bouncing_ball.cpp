@@ -17,14 +17,14 @@ void setup() {
   x = 0.0;
   y = 12.0; //Starts at (0,12), avoiding top border
   bin = 1.0;
-  b = 0.5;
+  b = 0.5; // Y changes by +/-0.5
 
 }
 
 void loop() { //Comments for debugging
   
   tft.fillScreen(0x000000);
-  tft.fillCircle(x, y, 10, 0xFFFFFF);
+  tft.fillCircle(x, y, 10, 0xFFFFFF); // position in x, position in y, radius, colour
 
   if (x == 228){
     bin = -1;
@@ -44,8 +44,6 @@ void loop() { //Comments for debugging
   }
   y += b;
 
-  tft.drawString(String(x), 30, 90, 5);
-  tft.drawString(String(y), 70, 90, 5);
   /*Serial.print("x = ");
   Serial.println(x);
   Serial.print("\n");
